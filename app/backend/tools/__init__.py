@@ -1,15 +1,13 @@
 """
-Xyrox — Tools Package (Phase 2, File 7)
+Xyrox — Tools Package (Phase 4)
 
-Central builder for the default tool registry.
-
-Call build_default_registry() to get a registry containing every
-tool Xyrox currently knows how to use. As new tools are added,
-this file is the single place to register them.
+Central builder for the default tool registry. As new tools are
+added, register them here.
 """
 
 from app.backend.tools.registry import ToolRegistry
 from app.backend.tools.tasks import register_task_tools
+from app.backend.tools.work_logs import register_work_log_tools
 
 
 def build_default_registry() -> ToolRegistry:
@@ -19,4 +17,5 @@ def build_default_registry() -> ToolRegistry:
     """
     registry = ToolRegistry()
     register_task_tools(registry)
+    register_work_log_tools(registry)
     return registry

@@ -71,7 +71,8 @@ def test_registry_schema_is_openai_format():
     r = build_default_registry()
     schema = r.to_ai_schema()
     assert isinstance(schema, list)
-    assert len(schema) == 3
+    # Phase 4: 3 task tools + 2 work log tools = 5
+    assert len(schema) == 5
     for entry in schema:
         assert entry["type"] == "function"
         assert "name" in entry["function"]

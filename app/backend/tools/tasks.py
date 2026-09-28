@@ -1,15 +1,14 @@
 """
-Xyrox — Task Tools (Phase 2, File 6)
+Xyrox — Task Tools (Phase 4, revised)
 
-The first real tool the AI can invoke. It writes to the SQLite
-database through SQLAlchemy. No fabrication, no fake success.
+Same tools as Phase 2, plus explicit **extra rejection so that when
+a model mixes up fields between tools (e.g. passes "customer" to
+create_task), the error message is clear and structured.
 
 Design rules:
-- Tool functions receive **arguments (from the AI or from tests)
-  and return a plain dict that is JSON-serializable.
-- All database work happens inside a session that is always closed.
-- Any error is raised, not swallowed. The ToolRegistry wraps it.
-- No tool claims success without a real DB write and verification.
+- No silent acceptance of unknown kwargs (Master Command §18).
+- Every failure path returns a specific, actionable error.
+- All DB writes are verified by re-read.
 """
 
 from datetime import datetime, timezone
@@ -23,26 +22,28 @@ from app.backend.tools.base import Tool, ToolValidationError
 from app.backend.tools.registry import ToolRegistry
 
 
-# ============================================================
-# HELPERS
-# ============================================================
 VALID_STATUSES = {"pending", "in_progress", "completed", "blocked", "cancelled", "unknown"}
 VALID_PRIORITIES = {"low", "medium", "high", "urgent"}
 
 
+def _reject_extra(tool_name: str, extra: dict) -> None:
+    """Raise a clear error listing unexpected arguments."""
+    if extra:
+        keys = ", ".join(sorted(extra.keys()))
+        raise ToolValidationError(
+            f"Tool '{tool_name}' received unexpected argument(s): {keys}. "
+            f"These fields do not belong to this tool."
+        )
+
+
 def _get_or_create_default_user(db: Session) -> User:
-    """
-    For Phase 2 we operate as a single user ("Joseph"). Later this
-    becomes real authentication. Until then, this ensures a user row
-    exists so tasks have a valid foreign key.
-    """
     user = db.query(User).filter_by(username="joseph").first()
     if user is None:
         user = User(
             username="joseph",
             email="joseph@xyrox.local",
             full_name="Joseph",
-            hashed_password="__no_login_yet__",  # not a real password
+            hashed_password="__no_login_yet__",
         )
         db.add(user)
         db.commit()
@@ -51,11 +52,6 @@ def _get_or_create_default_user(db: Session) -> User:
 
 
 def _parse_due_date(value) -> Optional[datetime]:
-    """
-    Accept None, an ISO 8601 string, or a datetime. Return a
-    timezone-aware datetime or None. Raise ToolValidationError
-    on garbage input (never silently ignore).
-    """
     if value is None or value == "":
         return None
     if isinstance(value, datetime):
@@ -64,7 +60,6 @@ def _parse_due_date(value) -> Optional[datetime]:
         return value
     if isinstance(value, str):
         try:
-            # Python 3.11+ accepts the trailing 'Z'
             parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
         except ValueError as exc:
             raise ToolValidationError(
@@ -89,14 +84,10 @@ def create_task(
     status: str = "pending",
     source: str = "chat",
     ai_confidence: str = "high",
+    **extra,
 ) -> dict:
-    """
-    Create a task in the Xyrox database.
+    _reject_extra("create_task", extra)
 
-    Returns a dict with the new task's id and fields — proof of a real write.
-    Raises ToolValidationError on bad input.
-    """
-    # ---- validation ----
     if not isinstance(title, str) or not title.strip():
         raise ToolValidationError("title must be a non-empty string.")
 
@@ -114,11 +105,9 @@ def create_task(
 
     parsed_due = _parse_due_date(due_date)
 
-    # ---- database write ----
     db: Session = SessionLocal()
     try:
         user = _get_or_create_default_user(db)
-
         task = Task(
             title=title.strip(),
             description=description,
@@ -133,7 +122,6 @@ def create_task(
         db.commit()
         db.refresh(task)
 
-        # Verify the row actually exists (no false positives)
         verified = db.query(Task).filter_by(id=task.id).first()
         if verified is None:
             raise RuntimeError(
@@ -160,11 +148,10 @@ def create_task(
 def list_tasks(
     status: Optional[str] = None,
     limit: int = 20,
+    **extra,
 ) -> dict:
-    """
-    Return the user's tasks, optionally filtered by status.
-    Real DB read. No cached or hardcoded values.
-    """
+    _reject_extra("list_tasks", extra)
+
     if limit < 1 or limit > 500:
         raise ToolValidationError("limit must be between 1 and 500.")
 
@@ -203,10 +190,9 @@ def list_tasks(
 # ============================================================
 # TOOL: complete_task
 # ============================================================
-def complete_task(task_id: int) -> dict:
-    """
-    Mark a task as completed. Real DB update. Verifies the change.
-    """
+def complete_task(task_id: int, **extra) -> dict:
+    _reject_extra("complete_task", extra)
+
     if not isinstance(task_id, int) or task_id < 1:
         raise ToolValidationError("task_id must be a positive integer.")
 
@@ -221,7 +207,6 @@ def complete_task(task_id: int) -> dict:
         db.commit()
         db.refresh(task)
 
-        # Verify the update
         if task.status != "completed":
             raise RuntimeError(f"Task id={task_id} did not update correctly.")
 
@@ -239,43 +224,23 @@ def complete_task(task_id: int) -> dict:
 # REGISTRATION
 # ============================================================
 def register_task_tools(registry: ToolRegistry) -> None:
-    """
-    Register all task-related tools in the given registry.
-    Called by the global registry builder.
-    """
     registry.register(Tool(
         name="create_task",
         description=(
-            "Create a new task. Use when the user wants to record a to-do, "
-            "a follow-up, a deadline, or anything they need to do later. "
-            "Extract a clear title from the user's message. If the user "
-            "mentions a date, convert it to an ISO 8601 due_date."
+            "Create a new task. Use ONLY when the user wants to record "
+            "a to-do, follow-up, or deadline. This tool accepts ONLY: "
+            "title (required), description, due_date, priority, status. "
+            "Do NOT pass customer, project, notes, or duration — those "
+            "belong to log_work, not create_task."
         ),
         parameters={
             "type": "object",
             "properties": {
-                "title": {
-                    "type": "string",
-                    "description": "Short, clear title of the task.",
-                },
-                "description": {
-                    "type": "string",
-                    "description": "Optional longer description.",
-                },
-                "due_date": {
-                    "type": "string",
-                    "description": "Optional ISO 8601 datetime, e.g. 2026-09-30T17:00:00Z.",
-                },
-                "priority": {
-                    "type": "string",
-                    "enum": sorted(VALID_PRIORITIES),
-                    "description": "Task priority. Default: medium.",
-                },
-                "status": {
-                    "type": "string",
-                    "enum": sorted(VALID_STATUSES),
-                    "description": "Task status. Default: pending.",
-                },
+                "title": {"type": "string", "description": "Short, clear title."},
+                "description": {"type": "string", "description": "Optional longer description."},
+                "due_date": {"type": "string", "description": "ISO 8601 datetime."},
+                "priority": {"type": "string", "enum": sorted(VALID_PRIORITIES)},
+                "status": {"type": "string", "enum": sorted(VALID_STATUSES)},
             },
             "required": ["title"],
         },
@@ -285,21 +250,14 @@ def register_task_tools(registry: ToolRegistry) -> None:
     registry.register(Tool(
         name="list_tasks",
         description=(
-            "List the user's tasks. Use when the user asks what they have to do, "
-            "what is outstanding, what is pending, or what is completed."
+            "List the user's tasks. Use when the user asks what they "
+            "have to do, what is outstanding, or what is completed."
         ),
         parameters={
             "type": "object",
             "properties": {
-                "status": {
-                    "type": "string",
-                    "enum": sorted(VALID_STATUSES),
-                    "description": "Optional filter by status.",
-                },
-                "limit": {
-                    "type": "integer",
-                    "description": "Maximum tasks to return. Default 20.",
-                },
+                "status": {"type": "string", "enum": sorted(VALID_STATUSES)},
+                "limit": {"type": "integer"},
             },
             "required": [],
         },
@@ -309,16 +267,13 @@ def register_task_tools(registry: ToolRegistry) -> None:
     registry.register(Tool(
         name="complete_task",
         description=(
-            "Mark an existing task as completed. Use when the user says they "
-            "finished, did, or completed something. Requires the task id."
+            "Mark an existing task as completed. Requires the task id. "
+            "Use ONLY when the user says a task is finished."
         ),
         parameters={
             "type": "object",
             "properties": {
-                "task_id": {
-                    "type": "integer",
-                    "description": "The id of the task to mark as completed.",
-                },
+                "task_id": {"type": "integer"},
             },
             "required": ["task_id"],
         },
