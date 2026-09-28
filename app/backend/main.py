@@ -1,15 +1,8 @@
 """
 Xyrox — Personal AI Operations Agent
-Backend Entry Point (Phase 1)
+Backend Entry Point (Phase 3, sub-phase 3)
 
-This file:
-1. Creates the SQLite database and all tables on startup.
-2. Boots the FastAPI application.
-3. Registers the /  and /health endpoints.
-4. Exposes the interactive API docs at /docs.
-
-Run with:
-    uvicorn app.backend.main:app --reload
+Registers the auth and chat routers under /api/v1.
 """
 
 from fastapi import FastAPI
@@ -18,21 +11,17 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.backend.config import settings
 from app.backend.database.db import engine, Base
 
-# IMPORTANT: Importing the models module is what tells SQLAlchemy
-# which tables exist. Without this import, create_all() would
-# create nothing. Do not remove.
+# Ensure models are imported so tables are created
 from app.backend.models import models  # noqa: F401
 
+# Routers
+from app.backend.api import auth as auth_router
+from app.backend.api import chat as chat_router
 
-# ------------------------------------------------------------
-# Create all database tables (idempotent — safe to run every startup)
-# ------------------------------------------------------------
+
 Base.metadata.create_all(bind=engine)
 
 
-# ------------------------------------------------------------
-# FastAPI application
-# ------------------------------------------------------------
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
@@ -43,22 +32,15 @@ app = FastAPI(
 )
 
 
-# ------------------------------------------------------------
-# CORS — allow the future frontend to talk to this backend.
-# We will tighten this in a later phase.
-# ------------------------------------------------------------
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # tighten in a later phase
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
-# ------------------------------------------------------------
-# Root endpoint — quick status check
-# ------------------------------------------------------------
 @app.get("/", tags=["system"])
 def root():
     return {
@@ -72,9 +54,11 @@ def root():
     }
 
 
-# ------------------------------------------------------------
-# Health check — used by tests and future monitoring
-# ------------------------------------------------------------
 @app.get("/health", tags=["system"])
 def health_check():
     return {"status": "healthy"}
+
+
+# API v1
+app.include_router(auth_router.router, prefix=settings.API_V1_STR)
+app.include_router(chat_router.router, prefix=settings.API_V1_STR)
