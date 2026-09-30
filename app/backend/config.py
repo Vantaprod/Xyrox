@@ -35,7 +35,23 @@ class Settings(BaseSettings):
 
     # Timezone
     TZ: str = "Africa/Lagos"
+    # Telegram (Phase 7.1)
+    TELEGRAM_BOT_TOKEN: str = ""
+    TELEGRAM_ALLOWED_CHAT_IDS: str = ""
 
+    # Email (Phase 7.2)
+    EMAIL_IMAP_HOST: str = ""
+    EMAIL_IMAP_PORT: int = 993
+    EMAIL_SMTP_HOST: str = ""
+    EMAIL_SMTP_PORT: int = 587
+    EMAIL_USER: str = ""
+    EMAIL_PASSWORD: str = ""
+
+    # Telephony (Phase 7.4) — NOT CONFIGURED by default
+    TELEPHONY_PROVIDER: str = ""
+    TELEPHONY_API_KEY: str = ""
+    TELEPHONY_USERNAME: str = ""
+    TELEPHONY_FROM_NUMBER: str = ""
 
 @lru_cache()
 def get_settings() -> Settings:

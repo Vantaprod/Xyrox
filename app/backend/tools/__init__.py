@@ -1,5 +1,5 @@
 """
-Xyrox — Tools Package (Phase 5.5)
+Xyrox — Tools Package (Phase 7.1)
 """
 
 from app.backend.tools.registry import ToolRegistry
@@ -9,6 +9,7 @@ from app.backend.tools.reports import register_report_tools
 from app.backend.tools.exports import register_export_tools
 from app.backend.tools.excel import register_excel_tools
 from app.backend.tools.reasoning import register_reasoning_tools
+from app.backend.tools.telegram_tools import register_telegram_tools
 
 
 def build_default_registry() -> ToolRegistry:
@@ -19,4 +20,5 @@ def build_default_registry() -> ToolRegistry:
     register_export_tools(registry)
     register_excel_tools(registry)
     register_reasoning_tools(registry)
+    register_telegram_tools(registry)
     return registry

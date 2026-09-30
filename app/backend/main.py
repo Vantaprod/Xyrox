@@ -21,6 +21,7 @@ from app.backend.models import models  # noqa: F401
 from app.backend.api import auth as auth_router
 from app.backend.api import chat as chat_router
 from app.backend.api import voice as voice_router
+from app.backend.api import telegram as telegram_router
 
 
 Base.metadata.create_all(bind=engine)
@@ -67,3 +68,4 @@ def health_check():
 app.include_router(auth_router.router, prefix=settings.API_V1_STR)
 app.include_router(chat_router.router, prefix=settings.API_V1_STR)
 app.include_router(voice_router.router, prefix=settings.API_V1_STR)
+app.include_router(telegram_router.router, prefix=settings.API_V1_STR)

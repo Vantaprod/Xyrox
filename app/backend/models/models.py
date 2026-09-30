@@ -1,7 +1,7 @@
 """
-Xyrox — Database Models (Phase 4.3)
+Xyrox — Database Models (Phase 7.1)
 
-Tables: users, projects, tasks, work_logs, reports.
+Tables: users, projects, tasks, work_logs, reports, pending_outbound.
 Every table inherits from Base. All timestamps are timezone-aware.
 """
 
@@ -144,7 +144,7 @@ class Report(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
 
-    report_type = Column(String(32), nullable=False, index=True)  # daily, weekly, monthly
+    report_type = Column(String(32), nullable=False, index=True)
     period_start = Column(DateTime(timezone=True), nullable=False)
     period_end = Column(DateTime(timezone=True), nullable=False)
 
@@ -160,3 +160,34 @@ class Report(Base):
 
     def __repr__(self):
         return f"<Report id={self.id} type={self.report_type!r} status={self.status!r}>"
+
+
+# ============================================================
+# PENDING OUTBOUND (Phase 7.1)
+# ============================================================
+class PendingOutbound(Base):
+    """
+    Outbound messages awaiting user approval. Used by Telegram
+    (and later Email / Telephony) to enforce human-in-the-loop.
+
+    channel:   telegram | email | sms | call
+    recipient: chat_id (str) / email / phone number
+    content:   text body OR a JSON description (for calls)
+    status:    pending | sent | error | cancelled
+    """
+    __tablename__ = "pending_outbound"
+
+    id = Column(Integer, primary_key=True, index=True)
+    channel = Column(String(32), nullable=False, index=True)
+    recipient = Column(String(255), nullable=False)
+    content = Column(Text, nullable=False)
+    status = Column(String(32), default="pending", nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+    sent_at = Column(DateTime(timezone=True), nullable=True)
+    error = Column(Text, nullable=True)
+
+    def __repr__(self):
+        return (
+            f"<PendingOutbound id={self.id} channel={self.channel!r} "
+            f"status={self.status!r}>"
+        )
