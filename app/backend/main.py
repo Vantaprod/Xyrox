@@ -1,8 +1,11 @@
 """
 Xyrox — Personal AI Operations Agent
-Backend Entry Point (Phase 3, sub-phase 3)
+Backend Entry Point (Phase 6.4)
 
-Registers the auth and chat routers under /api/v1.
+Routers registered under /api/v1:
+    - auth   (register / login / me)
+    - chat   (chat / reset)
+    - voice  (transcribe / enroll / profiles / command)
 """
 
 from fastapi import FastAPI
@@ -17,6 +20,7 @@ from app.backend.models import models  # noqa: F401
 # Routers
 from app.backend.api import auth as auth_router
 from app.backend.api import chat as chat_router
+from app.backend.api import voice as voice_router
 
 
 Base.metadata.create_all(bind=engine)
@@ -62,3 +66,4 @@ def health_check():
 # API v1
 app.include_router(auth_router.router, prefix=settings.API_V1_STR)
 app.include_router(chat_router.router, prefix=settings.API_V1_STR)
+app.include_router(voice_router.router, prefix=settings.API_V1_STR)
